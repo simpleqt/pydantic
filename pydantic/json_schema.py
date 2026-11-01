@@ -2281,6 +2281,26 @@ class GenerateJsonSchema:
         Returns:
             The generated JSON schema.
         """
+        inner = cast(
+            'core_schema.ModelSchema | core_schema.DataclassSchema | core_schema.TypedDictSchema', schema['schema']
+        )
+        if inner['type'] in ('model', 'dataclass', 'typed-dict'):
+            # The definitions are generated *before* the inner schema referencing them. As such, the class
+            # config of the inner schema (and in particular `json_schema_mode_override`) must be pushed when
+            # generating the definitions, so that they are cached under the mode their references use:
+            with self._config_wrapper_stack.push(_get_class_config(inner)):
+                self._generate_definitions(schema)
+                # Note: the config is pushed a second time when generating the inner schema, which is harmless:
+                return self.generate_inner(inner)
+        self._generate_definitions(schema)
+        return self.generate_inner(inner)
+
+    def _generate_definitions(self, schema: core_schema.DefinitionsSchema) -> None:
+        """Generates the JSON schemas of the definitions contained in the given definitions schema.
+
+        Args:
+            schema: The core schema.
+        """
         for definition in schema['definitions']:
             try:
                 self.generate_inner(definition)
@@ -2288,7 +2308,6 @@ class GenerateJsonSchema:
                 core_ref: CoreRef = CoreRef(definition['ref'])  # type: ignore
                 self._core_defs_invalid_for_json_schema[self.get_defs_ref((core_ref, self.mode))] = e
                 continue
-        return self.generate_inner(schema['schema'])
 
     def definition_ref_schema(self, schema: core_schema.DefinitionReferenceSchema) -> JsonSchemaValue:
         """Generates a JSON schema that matches a schema that references a definition.

@@ -6469,6 +6469,30 @@ def test_json_schema_mode_override_typed_dict_computed_fields() -> None:
     }
 
 
+@pytest.mark.parametrize('mode', ['validation', 'serialization'])
+def test_json_schema_mode_override_shared_type_alias(mode: JsonSchemaMode) -> None:
+    """https://github.com/pydantic/pydantic/issues/12057"""
+
+    ObjectId = TypeAliasType('ObjectId', UUID4)
+
+    class Model(BaseModel):
+        model_config = ConfigDict(json_schema_mode_override='serialization')
+
+        object1_id: ObjectId
+        object2_id: ObjectId
+
+    assert Model.model_json_schema(mode=mode) == {
+        '$defs': {'ObjectId': {'format': 'uuid4', 'type': 'string'}},
+        'properties': {
+            'object1_id': {'$ref': '#/$defs/ObjectId'},
+            'object2_id': {'$ref': '#/$defs/ObjectId'},
+        },
+        'required': ['object1_id', 'object2_id'],
+        'title': 'Model',
+        'type': 'object',
+    }
+
+
 def test_models_json_schema_generics() -> None:
     class G(BaseModel, Generic[T]):
         foo: T
